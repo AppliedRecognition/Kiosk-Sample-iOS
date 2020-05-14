@@ -12,11 +12,13 @@ import VerIDCore
 import VerIDUI
 
 /// View controller that displays a camera preview
-public class ViewController: CameraViewController, VerIDFactoryDelegate, VerIDSessionDelegate {
+public class ViewController: CameraViewController, VerIDFactoryDelegate, VerIDSessionDelegate, VerIDSessionViewDelegate {
+    
     
     private var verid: VerID?
     @objc private dynamic var isFacePresent = false
     private var faceObservation: NSKeyValueObservation?
+    private var veridSessionViewController: UIViewController?
     @IBOutlet var label: UILabel!
     
     override open func viewDidLoad() {
@@ -53,7 +55,51 @@ public class ViewController: CameraViewController, VerIDFactoryDelegate, VerIDSe
         }
     }
     
-    // MARK: -
+    // MARK: - Ver-ID session view delegate
+    
+    public func presentVerIDViewController(_ viewController: UIViewController & VerIDViewControllerProtocol) {
+        self.replaceSessionViewController(with: viewController)
+    }
+    
+    public func presentResultViewController(_ viewController: UIViewController & ResultViewControllerProtocol) {
+        self.replaceSessionViewController(with: viewController)
+    }
+    
+    public func presentTipsViewController(_ viewController: UIViewController & TipsViewControllerProtocol) {
+        self.replaceSessionViewController(with: viewController)
+    }
+    
+    public func closeViews(callback: @escaping () -> Void) {
+        self.removeSessionViewController()
+        callback()
+    }
+    
+    // MARK: - Ver-ID view controllers
+    
+    func replaceSessionViewController(with viewController: UIViewController) {
+        self.removeSessionViewController()
+        self.addSessionViewController(viewController)
+    }
+    
+    func addSessionViewController(_ sessionViewController: UIViewController) {
+        addChild(sessionViewController)
+        sessionViewController.view.frame = self.view.frame
+        self.view.addSubview(sessionViewController.view)
+        sessionViewController.didMove(toParent: self)
+        self.veridSessionViewController = sessionViewController
+    }
+    
+    func removeSessionViewController() {
+        guard let child = self.veridSessionViewController else {
+            return
+        }
+        child.willMove(toParent: nil)
+        child.view.removeFromSuperview()
+        child.removeFromParent()
+        self.veridSessionViewController = nil
+    }
+    
+    // MARK: - Ver-ID view controllers
     
     func startPresenceDetection() {
         self.label.text = "Step in front of the camera"
@@ -64,6 +110,7 @@ public class ViewController: CameraViewController, VerIDFactoryDelegate, VerIDSe
                 DispatchQueue.main.async {
                     let settings = LivenessDetectionSessionSettings()
                     let session = VerIDSession(environment: verid, settings: settings)
+                    session.viewDelegate = self
                     session.delegate = self
                     session.start()
                 }
@@ -84,6 +131,8 @@ public class ViewController: CameraViewController, VerIDFactoryDelegate, VerIDSe
         }
     }
     
+    // MARK: - Ver-ID factory delegate
+    
     public func veridFactory(_ factory: VerIDFactory, didCreateVerID instance: VerID) {
         self.verid = instance        
         self.startPresenceDetection()
@@ -94,6 +143,8 @@ public class ViewController: CameraViewController, VerIDFactoryDelegate, VerIDSe
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         self.present(alert, animated: true)
     }
+    
+    // MARK: - AV capture session
     
     public override func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let verid = self.verid else {
